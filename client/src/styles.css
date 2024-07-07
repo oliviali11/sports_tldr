@@ -1,0 +1,8 @@
+.bg-image {
+    background-image: url('./assets/bg.jpeg');
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    /* Optional: Set background color */
+    background-color: #f3f4f6; /* Fallback color */
+  }
