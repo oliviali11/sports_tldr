@@ -23,7 +23,7 @@ model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
 
 
 # YouTube API configuration
-YOUTUBE_API_KEY = 'AIzaSyA0ELGrExW8Ol0Lx4ZO6EVcEduB8SWmrKQ'  # Replace with your actual YouTube Data API key
+YOUTUBE_API_KEY = 'Replace with your actual YouTube Data API key'  
 youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 
 def get_key_moments(transcript):
