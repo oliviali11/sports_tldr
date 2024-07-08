@@ -43,10 +43,6 @@ def get_key_moments(transcript):
         logging.error(f"Error generating key moments: {str(e)}")
         return None
 
-@app.route("/api/users", methods=['GET'])
-def users():
-    return jsonify({"users": ['arpan', 'zach', 'jessie']})
-
 @app.route('/search', methods=['GET'])
 def search_videos():
     query = request.args.get('query')
