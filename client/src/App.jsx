@@ -1,31 +1,45 @@
-import React from 'react';
-import UploadVideo from './components/UploadVideo';
-import { useState, useEffect } from 'react';
-import axios from 'axios'
-import YouTube from './components/Youtube';
-import TextInput from './components/TestInput';
-import './styles.css'
-{
-  /* The following line can be included in your src/index.js or App.js file */
-}
-import 'bootstrap/dist/css/bootstrap.min.css';
+import React, { useState } from 'react';
+import axios from 'axios';
+import './styles.css';
+import './index.css';
 
-function App() {
+const App = () => {
+  const [url, setUrl] = useState('');
+  const [keyMoments, setKeyMoments] = useState('');
+
+  const handleUrlChange = (event) => {
+    setUrl(event.target.value);
+  };
+
+  const handleProcess = async () => {
+    try {
+      const response = await axios.post('http://localhost:8000/process', { url });
+      setKeyMoments(response.data.key_moments);
+    } catch (error) {
+      console.error('Error processing video:', error);
+      setKeyMoments('Failed to process video. Please try again.');
+    }
+  };
 
   return (
-    <div className="flex bg-image min-h-screen">
-    <div className="ml-8 mt-32 flex flex-col w-full"> {/* Adjust margin-top and centering as needed */}
-      <h1 className="text-white text-7xl font-anton mb-8">Sports TLDR</h1>
-      <hr />
-      <div className="w-full max-w-screen-lg mt-8 overflow-y-auto pb-16"> {/* Adjust max-width as needed */}
-      <YouTube />
-      <TextInput />
+    <div className="bg-image min-h-screen flex flex-col items-center justify-center">
+      <input
+        type="text"
+        value={url}
+        onChange={handleUrlChange}
+        placeholder="Enter YouTube video URL"
+        className="mb-4 px-3 py-2 border rounded"
+      />
+      <button onClick={handleProcess} className="bg-blue-500 text-white px-4 py-2 rounded">
+        Process Video
+      </button>
+      <div className="mt-4">
+        <h2>Key Moments Summary:</h2>
+        <pre>{keyMoments}</pre>
       </div>
     </div>
-  </div>
   );
-}
+};
 
 export default App;
-
 

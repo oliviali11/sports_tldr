@@ -1,30 +1,51 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from transformers import pipeline
-import moviepy.editor as mp
-import speech_recognition as sr
+from youtube_transcript_api import YouTubeTranscriptApi
 from googleapiclient.discovery import build
+from transformers import T5Tokenizer, T5ForConditionalGeneration
+import torch
+import logging
+import os
 
 app = Flask(__name__)
 cors = CORS(app, origins='*')
 
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+# Initialize logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Check if CUDA (GPU) is available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Load the tokenizer and model
+model_name = "t5-small"  # You can also use "t5-base" for better quality
+tokenizer = T5Tokenizer.from_pretrained(model_name)
+model = T5ForConditionalGeneration.from_pretrained(model_name).to(device)
+
 
 # YouTube API configuration
-YOUTUBE_API_KEY = 'AIzaSyBkWISqhPfctWXnWR498MujnIuwQOJZG-w'  # Replace with your actual YouTube Data API key
+YOUTUBE_API_KEY = 'AIzaSyA0ELGrExW8Ol0Lx4ZO6EVcEduB8SWmrKQ'  # Replace with your actual YouTube Data API key
 youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+
+def get_key_moments(transcript):
+    try:
+        # Create a prompt for the LLM
+        prompt = f"Give a summary of key moments in the following sports game transcript, include timestamps whenever you talk about a moment:\n\n{transcript}"
+
+        # Tokenize the prompt
+        inputs = tokenizer(prompt, return_tensors="pt", max_length=1024, truncation=True).to(device)
+
+        # Generate the output using the model
+        summary_ids = model.generate(inputs["input_ids"], max_length=1024, min_length=30, length_penalty=2.0, num_beams=4, early_stopping=True)
+        output = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+        return output
+    except Exception as e:
+        logging.error(f"Error generating key moments: {str(e)}")
+        return None
 
 @app.route("/api/users", methods=['GET'])
 def users():
-    return jsonify(
-        {
-            "users": [
-                'arpan',
-                'zach',
-                'jessie'
-            ]
-        }
-    )
+    return jsonify({"users": ['arpan', 'zach', 'jessie']})
 
 @app.route('/search', methods=['GET'])
 def search_videos():
@@ -40,97 +61,50 @@ def search_videos():
             type='video'
         ).execute()
 
-        videos = []
-        for item in response['items']:
-            video = {
-                'title': item['snippet']['title'],
-                'url': f"https://www.youtube.com/watch?v={item['id']['videoId']}"
-            }
-            videos.append(video)
-
+        videos = [{'title': item['snippet']['title'], 'url': f"https://www.youtube.com/watch?v={item['id']['videoId']}"} for item in response['items']]
         return jsonify(videos)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/process', methods=['POST'])
 def process_video():
+    logging.debug("Processing video...")
     data = request.get_json()
+    logging.debug(f"Received data: {data}")
+
     url = data.get('url')
+    logging.debug(f"Video URL: {url}")
 
     if not url:
         return jsonify({'error': 'Missing URL parameter'}), 400
 
-    # Mock implementation of processing the video
-    # You need to implement actual video processing using a library such as moviepy
+    video_id = url.split('v=')[-1]
+    logging.debug(f"Video ID: {video_id}")
 
-    # Use NLP to extract highlights (mock implementation)
-    mock_transcript = ("the last big French penalty shoots out was at the European championships last summer and they lost to Switzerland because kilan mbappe failed against Yan s with their final penalty this time having twice already scored from the spot and three times in all having" +  
-    "scored mbappe steps up first andle mppe rattles it in on his day of no error when you hit it that hard even though the keeper guesses the right way it's going to be a difficult one it's a decent touch on it but now we're near enough interesting that the two top men are going" +
-    "first well Messi went first against the Netherlands he went first also in last Summer's copper America shoots out in Brazilia against Colombia in the semi-final and on both occasions he [Applause] scored Messi with such Immaculate Poise how do you do that how do you do this in these" +
-    "circumstances next up is [Music] kingan ear spitting whistles keman Great Stop Martinez is punching the air again massive character massive moment that's twice his guess right with mbappe couldn't do much about it he could with this one he a big lad he's got a Long Reach well for" +
-    "Argentina Pao dybala came off the bench with this kick of the ball in mind dybala to the middle some can barely watch yeah not easy when you've only been on the pitch a few minutes as he has not an easy situation that Mar in mouth perhaps sitting it down the [Applause] middle William charmi has scored one of the goals of this competition against" + 
-    "England in the quarterfinals Martinez is trying to get in his head he hasn't helped with the return of the ball he will do what it [Applause] takes not a nail left to be chewed trus jacket wide and Argentina are on the castp easy to say now but never looked entirely confident waiting for that he thrives on these situations")
+    try:
+        # Get the transcript from the YouTube video
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript_text = ' '.join([f"{t['start']}s: {t['text']}" for t in transcript])
+        logging.debug(f"Transcript text: {transcript_text[:500]}")  # Log the first 500 characters
 
-    highlights = summarizer(mock_transcript, max_length=150, min_length=50, do_sample=False)
+        # Get key moments using LLM
+        key_moments = get_key_moments(transcript_text)
+        if key_moments is None:
+            return jsonify({'error': 'Failed to generate key moments'}), 500
+        logging.debug(f"Key moments: {key_moments}")
 
-    highlights_text = ' '.join([highlight['summary_text'] for highlight in highlights])
-
-    return jsonify({"highlights": highlights_text})
-
-@app.route('/upload', methods=['POST'])
-def upload_video():
-    file = request.files['video']
-    file.save('input.mp4')
-
-    # Extract audio and convert to text
-    video = mp.VideoFileClip('input.mp4')
-    video.audio.write_audiofile('audio.wav')
-
-    recognizer = sr.Recognizer()
-    with sr.AudioFile('audio.wav') as source:
-        audio = recognizer.record(source)
-        transcript = recognizer.recognize_google(audio)
-
-    # Use NLP to extract highlights (Assume highlights are sentences with 'goal' or 'score')
-    nlp = pipeline('summarization')
-    highlights = nlp(transcript, max_length=50, min_length=25, do_sample=False)
-
-    # Extract video segments based on highlights (mock implementation)
-    segments = []
-    for highlight in highlights:
-        start = max(0, 5)  # Mock start time
-        end = min(video.duration, 10)  # Mock end time
-        segments.append(video.subclip(start, end))
-
-    # Concatenate segments
-    if segments:
-        final_clip = mp.concatenate_videoclips(segments)
-        output_file = 'output.mp4'
-        final_clip.write_videofile(output_file)
-        return jsonify({"message": "Highlights video created successfully!", "file_url": f"http://localhost:8000/download/{output_file}"})
-    else:
-        return jsonify({"message": "No highlights found in the video."})
-
-@app.route('/analyze', methods=['POST'])
-def analyze_transcript():
-    print("im here")
-    data = request.get_json()
-    transcript = data['transcript']
-
-    # Use NLP to extract highlights
-    nlp = pipeline('summarization')
-    highlights = nlp(transcript, max_length=150, min_length=50, do_sample=False)
-
-    # Extracted highlights text
-    highlights_text = ' '.join([highlight['summary_text'] for highlight in highlights])
-
-    return jsonify({"highlights": highlights_text})
-
-@app.route('/download/<filename>', methods=['GET'])
-def download_file(filename):
-    return send_file(filename, as_attachment=True)
+        return jsonify({"key_moments": key_moments})
+    except Exception as e:
+        logging.error(f"Error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-   app.run(debug=True, port=8000)
+    logging.debug("Starting Flask server...")
+    app.run(debug=True, port=8000)
+
+
+
+
+
 
 
