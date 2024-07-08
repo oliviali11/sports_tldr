@@ -38,7 +38,7 @@ const App = () => {
       <button onClick={handleProcess} className="bg-white text-black font-anton px-4 py-2 rounded hover:bg-gray-200">
       {isLoading ? 'Processing...' : 'Process Video'}
       </button>
-      <div className="mt-4 ml-4 text-white font-anton">
+      <div className="mt-4 ml-4 mr-4 text-white font-anton">
         <h2 className='text-2xl mb-4'>Key Moments Summary:</h2>
         <div className="whitespace-pre-wrap break-words max-w-full leading-relaxed">
           {keyMoments}
